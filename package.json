@@ -1,0 +1,22 @@
+{
+  "name": "ai",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "electron": "^40.4.1"
+  },
+  "dependencies": {
+    "dubnium": "^4.0.1",
+    "menubar.js": "^0.0.1",
+    "ollama": "^0.6.3",
+    "tesseract.js": "^7.0.0"
+  }
+}

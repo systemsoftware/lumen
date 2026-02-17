@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.3);
+            cursor: crosshair;
+            user-select: none;
+        }
+
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        #preview {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            max-width: 200px;
+            max-height: 200px;
+            border: 2px solid #0ea5e9;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            display: none;
+        }
+
+        #info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-family: system-ui, -apple-system, sans-serif;
+            font-size: 14px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 12px 16px;
+            border-radius: 6px;
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">Click and drag to select area</div>
+    <canvas id="canvas"></canvas>
+    <img id="preview">
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const preview = document.getElementById('preview');
+        const info = document.getElementById('info');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        let isSelecting = false;
+        let startPos = null;
+        let currentPos = null;
+
+        window.addEventListener('mousedown', (e) => {
+            isSelecting = true;
+            startPos = { x: e.clientX, y: e.clientY };
+            currentPos = startPos;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isSelecting) return;
+            
+            currentPos = { x: e.clientX, y: e.clientY };
+            redraw();
+        });
+
+        window.addEventListener('mouseup', (e) => {
+            if (!isSelecting || !startPos) return;
+
+            isSelecting = false;
+            const rect = normalize(startPos, currentPos);
+
+            // Validate selection size
+            if (rect.width > 0 && rect.height > 0) {
+                sendCapture(rect);
+                info.textContent = 'Capturing...';
+            } else {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                info.textContent = 'Selection too small. Try again.';
+            }
+
+            startPos = null;
+            currentPos = null;
+        });
+
+        function redraw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (!startPos || !currentPos) return;
+
+            const rect = normalize(startPos, currentPos);
+
+            // Draw semi-transparent overlay (darkened area outside selection)
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Clear the selected area to show original
+            ctx.clearRect(rect.x, rect.y, rect.width, rect.height);
+
+            // Draw selection border
+            ctx.strokeStyle = '#0ea5e9';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+
+            // Draw corner handles
+            const handleSize = 6;
+            ctx.fillStyle = '#0ea5e9';
+            const corners = [
+                [rect.x, rect.y],
+                [rect.x + rect.width, rect.y],
+                [rect.x, rect.y + rect.height],
+                [rect.x + rect.width, rect.y + rect.height]
+            ];
+            corners.forEach(([x, y]) => {
+                ctx.fillRect(x - handleSize / 2, y - handleSize / 2, handleSize, handleSize);
+            });
+
+            // Draw dimensions text
+            ctx.fillStyle = '#0ea5e9';
+            ctx.font = '12px system-ui';
+            ctx.fillText(`${rect.width} × ${rect.height}`, rect.x + 6, rect.y + 18);
+        }
+
+        function normalize(start, end) {
+            const x = Math.min(start.x, end.x);
+            const y = Math.min(start.y, end.y);
+            const width = Math.abs(start.x - end.x);
+            const height = Math.abs(start.y - end.y);
+            return { x, y, width, height };
+        }
+
+        function sendCapture(rect) {
+            if (window.electronAPI && window.electronAPI.captureScreen) {
+                window.electronAPI.captureScreen(rect);
+            }else{
+                console.warn('Electron API not available. Capture not sent.');
+            }
+        }
+
+        // Listen for capture result
+        if (window.electronAPI && window.electronAPI.onCaptureComplete) {
+            window.electronAPI.onCaptureComplete((data) => {
+                preview.src = data;
+                preview.style.display = 'block';
+                info.textContent = 'Screenshot saved!';
+                
+                // Reset after showing result
+                setTimeout(() => {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    preview.style.display = 'none';
+                    info.textContent = 'Click and drag to select area';
+                }, 2000);
+            });
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+
+        // Allow ESC to cancel
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                isSelecting = false;
+                startPos = null;
+                currentPos = null;
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                preview.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>

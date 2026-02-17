@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings</title>
+    <link rel="stylesheet" href="settings.css">
+</head>
+<body>
+    <div class="container">
+       <div style="max-height: 150px; overflow: scroll;" oncontextmenu="if(confirm('Clear pull logs?')) { document.getElementById('pulllog').textContent = ''; document.getElementById('pullstatus').textContent = ''; }">
+         <p id="pullstatus"></p>
+        <pre id="pulllog"></pre>
+       </div>
+        <header>
+            <h1 style="text-align: center;">Settings</h1>
+        </header>
+        <div class="settings-list" id="settings-list"></div>
+    </div>
+
+
+                        <div class="setting-group input-group">
+                        <div class="setting-content">
+                            <p class="setting-description">Note: this app requires <code>nomic-embed-text</code>, but does not show this model in the UI since it’s not user-facing and small. It will be automatically pulled if not present when the app is launched.</p>
+                        </div>
+                        </div>
+
+    <div id="toast" class="toast"></div>
+
+<script>
+document.addEventListener('DOMContentLoaded', async () => {
+
+    const availableModels = (await window.electronAPI.fetchAvailableModels()).filter(m => !m.includes('nomic-embed-text')); // filter out the embedding model since it’s not user-facing
+
+    const settingsConfig = [
+        {
+            id:"pull",
+            label: 'Pull Model',
+            description: 'Pull a model from Ollama. Enter the model name and click pull. The model will be downloaded and available for use. Right click the log area to clear logs.',
+            type: 'text',
+            placeholder: 'e.g. gpt-oss',
+             value: '',
+             buttonText: 'Pull',
+        },
+                {
+            id: 'shortcut',
+            label: 'Capture Shortcut (Requires Restart)',
+            description: 'Global shortcut to trigger screen capture',
+            type: 'text',
+            placeholder: 'e.g. CmdOrCtrl+Shift+A',
+            value: await window.electronAPI.fetchSetting('shortcut'),
+        },
+        {
+            id: 'aiModel',
+            label: 'AI Model',
+            description: 'Select the AI model to use for generating responses. <a target="_blank" href="https://ollama.com/search" target="_blank">Find a model on Ollama</a>.',
+            type: 'select',
+            options: availableModels,
+            value: await window.electronAPI.fetchSetting('aiModel'),
+        },
+        {
+            id: 'visionModel',
+            label: 'OCR Model',
+            description: 'Select the vision model to use for OCR. Tesseract is the default & built-in option. Other models may offer better accuracy but require more resources. <a target="_blank" href="https://ollama.com/search?q=ocr" target="_blank">Find an OCR model on Ollama</a>.',
+            type: 'select',
+            options: ['Tesseract',...availableModels],
+            value: await window.electronAPI.fetchSetting('visionModel'),
+        },
+        {
+            id: 'aiThink',
+            label: 'AI Think',
+            description: 'Enable or disable AI thinking mode',
+            type: 'select',
+            options: ['low', 'medium', 'high', 'enabled', 'disabled'],
+            value: (await window.electronAPI.fetchSetting('aiThink')) ? 'enabled' : 'disabled',
+        },
+        {
+            id: 'lang',
+            label: 'OCR Language',
+            description: 'Language for OCR.',
+            type: 'text',
+            placeholder: 'e.g. eng, spa, fra',
+            value: await window.electronAPI.fetchSetting('lang'),
+        },
+            {
+            id: 'historyLimit',
+            label: 'History Limit',
+            description: 'Maximum number of history items to keep. Set to 0 for unlimited.',
+            type: 'text',
+            placeholder: 'e.g. 10, 20, 50',
+            value: await window.electronAPI.fetchSetting('historyLimit') || '0',
+        },
+        {
+            id:"delModels",
+            label: 'Delete Model',
+            description: 'Delete a model. Select the model and click delete. Use with caution as this will remove the model from your system.',
+            type: 'select',
+             options: availableModels,
+             buttonText: 'Delete',
+        }
+    ];
+
+    function renderSettings() {
+        const list = document.getElementById('settings-list');
+
+        list.innerHTML = settingsConfig.map(setting => {
+            if (setting.type === 'select') {
+                return `
+                    <div class="setting-group input-group">
+                        <div class="setting-content">
+                            <label class="setting-label">${setting.label}</label>
+                            <p class="setting-description">${setting.description}</p>
+                        </div>
+                        <div class="input-row">
+                            <select style="width: 100%;" id="${setting.id}">
+                                ${setting.options.map(option => `
+                                    <option value="${option}" ${option === setting.value ? 'selected' : ''}>
+                                        ${option}
+                                    </option>
+                                `).join('')}
+                            </select>
+                            <button data-setting="${setting.id}">${setting.buttonText || 'Save'}</button>
+                        </div>
+                    </div>
+                `;
+            }else if (setting.type === 'text') {
+                return `
+                    <div class="setting-group input-group">
+                        <div class="setting-content">
+                            <label class="setting-label">${setting.label}</label>
+                            <p class="setting-description">${setting.description}</p>
+                        </div>
+                        <div class="input-row">
+                            <input type="text" value="${setting.value || ''}" id="${setting.id}" placeholder="${setting.placeholder}" />
+                            <button data-setting="${setting.id}">${setting.buttonText || 'Save'}</button>
+                        </div>
+                    </div>
+                `;
+            } 
+            return '';
+        }).join('');
+
+        // Attach save handlers
+        settingsConfig.forEach(setting => {
+            const button = document.querySelector(`button[data-setting="${setting.id}"]`);
+            const select = document.getElementById(setting.id);
+
+            if (button && select) {
+                button.addEventListener('click', async () => {
+                    if (setting.id === 'pull') {
+                        document.getElementById('pulllog').textContent = '';
+                        document.getElementById('pullstatus').textContent = 'Starting pull...';
+                        await window.electronAPI.pullModel(select.value);
+                    } else if (setting.id === 'delModels') {
+                        if (confirm(`Are you sure you want to delete the model "${select.value}"? This action cannot be undone.`)) {
+                            await window.electronAPI.deleteModel(select.value);
+                        }
+                        } else {
+                        await window.electronAPI.setSetting(setting.id, select.value);
+                        showToast('Setting saved');
+                    }
+                });
+            }
+        });
+    }
+
+    renderSettings();
+});
+
+function showToast(message) {
+    const toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 3000);
+}
+
+const logBox = document.getElementById('pulllog');
+const statusBox = document.getElementById('pullstatus');
+
+window.electronAPI.onPullProgress((chunk) => {
+  const clean = chunk.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '').trim();
+  if (!clean) return;
+
+  // If it’s a finished layer or important status, append to log
+  if (
+    clean.match(/pulling .*100%/) ||
+    clean.startsWith('verifying') ||
+    clean.startsWith('writing') ||
+    clean === 'success'
+  ) {
+    logBox.textContent += clean + '\n';
+    logBox.scrollTop = logBox.scrollHeight;
+    statusBox.textContent = ''; // clear current line
+  } else {
+    // otherwise show it as the current live line
+    statusBox.textContent = clean;
+  }
+});
+
+
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,57 @@
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline';">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Assistant</title>
+    <link rel="stylesheet" href="./style.css">
+    <script src="./marked.min.js"></script>
+</head>
+<br>
+<div id="customactions">
+<p>SEARCH FOR:</p>
+<textarea style="width: 100%;" id="custom" placeholder="Enter natural language query here..."></textarea><br><br>
+<button style="width: 50%;margin: auto; display: block;" id="send">Search</button>
+</div>
+<br><br>
+<div id="response" style="display: none;"></div>
+
+<script>
+
+
+document.getElementById('send').addEventListener('click', () => {
+    const prompt = document.getElementById('custom').value;
+    window.electronAPI.search(prompt);
+      document.getElementById('response').style.display = 'block';
+      document.getElementById('response').innerHTML = 'Searching...';
+});
+
+let aiResponseBuffer = '';
+let lastMessageType = null;
+
+window.electronAPI.onSearchResults((message) => {
+  document.getElementById('response').innerHTML = ''
+const responseBox = document.getElementById('response');
+  if(message.type == 'done') {
+    document.getElementById('new-question').style.display = 'block';
+    return;
+  }
+  if (responseBox.innerHTML === 'Loading...' && message.type === 'message') {
+    responseBox.innerHTML = '';
+    aiResponseBuffer = '';
+    lastMessageType = null;
+  }
+
+  console.log('Received AI response chunk:', message);
+
+  if (message.type !== lastMessageType) {
+    aiResponseBuffer = '';
+    lastMessageType = message.type;
+  }
+
+  aiResponseBuffer += message;
+
+  responseBox.innerHTML = marked.parse(aiResponseBuffer);
+});
+
+
+</script>
