@@ -18,4 +18,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   pullModel: (model) => ipcRenderer.invoke('pull-model', model),
   onPullProgress: (callback) => ipcRenderer.on('model-pull-log', (event, data) => callback(data)),
   deleteModel: (model) => ipcRenderer.invoke('delete-model', model),
+  askQuery: (fileId) => ipcRenderer.invoke('ask-query', fileId),
 });

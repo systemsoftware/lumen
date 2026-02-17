@@ -26,7 +26,7 @@ async function answerQuery(query) {
   const matches = await semanticSearch(query, 5)
 
   const context = matches.map((m, i) =>
-    `${i + 1}. ${m.text}\nAI note: ${m.response}`
+    `${i + 1}. ${m.ocr}\nAI note: ${m.response}`
   ).join('\n\n')
 
   const prompt = `

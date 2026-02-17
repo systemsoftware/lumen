@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "dubnium": "^4.0.1",
+    "electron-prompt": "^1.7.0",
     "menubar.js": "^0.0.1",
     "ollama": "^0.6.3",
     "tesseract.js": "^7.0.0"

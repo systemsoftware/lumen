@@ -67,6 +67,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             value: await window.electronAPI.fetchSetting('visionModel'),
         },
         {
+            id:"ollamaHost",
+            label:"Remote Ollama Host",
+            description: "If you want to use a remote Ollama host instead of a local one, enter the URL here. Leave blank to use local Ollama.",
+            type: 'text',
+            placeholder: 'e.g. http://remote-server:11434',
+            value: await window.electronAPI.fetchSetting('ollamaHost'),
+        },
+        {
             id: 'aiThink',
             label: 'AI Think',
             description: 'Enable or disable AI thinking mode',
@@ -84,8 +92,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         },
             {
             id: 'historyLimit',
-            label: 'History Limit',
-            description: 'Maximum number of history items to keep. Set to 0 for unlimited.',
+            label: 'Memory Limit',
+            description: 'Maximum number of items to keep. Set to 0 for unlimited.',
             type: 'text',
             placeholder: 'e.g. 10, 20, 50',
             value: await window.electronAPI.fetchSetting('historyLimit') || '0',
@@ -97,6 +105,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             type: 'select',
              options: availableModels,
              buttonText: 'Delete',
+        },
+        {
+            id:"clipboardMonitoring",
+            label: 'Clipboard Monitoring',
+            description: 'When enabled, the app will monitor the clipboard for changes and can use the clipboard text as context for generating responses. If you frequently copy sensitive information and want to ensure it’s not used by the app, you can disable this feature.',
+            type: 'select',
+             options: ['disabled', 'enabled'],
+             value: (await window.electronAPI.fetchSetting('clipboardMonitoring'))
         }
     ];
 

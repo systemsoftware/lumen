@@ -7,9 +7,13 @@ module.exports = async function({ id, ocrText, response }) {
     prompt: ocrText
   })
 
+  console.log('Saving capture with ID:', id);
+
 
   const record = db.get(id);
-  await record.kv('response', response);
+  const existingResponses = (await record.read()).responses || [];
+  existingResponses.push(response);
+  await record.kv('responses', existingResponses);
   await record.kv('embedding', embeddingResult.embedding);
 
   console.log('Saved capture:', record.id)

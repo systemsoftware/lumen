@@ -7,8 +7,8 @@
     <script src="./marked.min.js"></script>
 </head>
 <br>
-<h2>Search History</h2>
-<body></body>
+<h2>Memory</h2>
+<div id="res" style="max-height: 800px; overflow: auto;display: none;"></div> <br>
 
 <script>
 
@@ -20,9 +20,9 @@ window.electronAPI.getHistory().then((history) => {
     entryElement.style.marginBottom = '20px';
     entryElement.innerHTML = `
         <h3 class="history-entry-timestamp">${new Date(entry.timestamp).toLocaleString()}</h3>
-      ${entry.response ? `<details class="history-entry-content">
-        <summary>Content</summary>
-        ${marked.parse(entry.response)}
+      ${entry.responses ? `<details class="history-entry-content">
+        <summary>AI Response${entry.responses.length > 1 ? 's' : ''}</summary>
+        ${entry.responses.map(r => `<div class="history-entry-response">${marked.parse(r)}</div>`).join('')}
       </details>` : ''}
         ${entry.ocr ? `<br><details class="history-entry-ocr">
             <summary>OCR Text</summary>
@@ -30,6 +30,7 @@ window.electronAPI.getHistory().then((history) => {
         </details>` : ''}
         <br>
         <button onclick="deleteEntry('${entry.id}')">Delete</button>
+        ${entry.id ? `<button onclick="askQuery('${entry.id}')">Ask</button>` : ''}
     `;
     document.body.appendChild(entryElement);
   });
@@ -41,6 +42,12 @@ const deleteEntry = (id) => {
       location.reload();
     });
   }
+};
+
+const askQuery = async (id) => {
+const res = await window.electronAPI.askQuery(id)
+document.getElementById('res').style.display = 'block';
+document.getElementById('res').innerHTML = `<h2>Response</h2><div>${marked.parse(res)}</div>`;
 };
 
 </script>

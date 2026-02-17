@@ -1,7 +1,7 @@
-const { app, BrowserWindow, desktopCapturer, screen, ipcMain, dialog, globalShortcut, Menu } = require('electron');
+const { app, BrowserWindow, desktopCapturer, screen, ipcMain, dialog, globalShortcut, Menu, clipboard } = require('electron');
 const { writeFile, readFile } = require('fs').promises;
 const tesseract = require('tesseract.js');
-const ollama = require('ollama').default;
+const { Ollama:_ollama, default:__ollama } = require('ollama');
 const { spawn, exec } = require('child_process');
 const menubar = require('menubar.js');
 const dubnium = require('dubnium');
@@ -9,10 +9,10 @@ const path = require('path')
 const saveCapture = require('./embed');
 const { randomUUID } = require('crypto');
 const { semanticSearch } = require('./search');
+const prompt = require('electron-prompt');
 
 function stripAnsi(str) {
   return str.replace(
-    // eslint-disable-next-line no-control-regex
     /\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g,
     ''
   );
@@ -56,7 +56,7 @@ const shortcuts = {
 }
 
 
-const pullText = async (image, settings = {}, path) => {
+const pullText = async (image, settings = {}, path, ollama) => {
   if (settings.visionModel && settings.visionModel !== 'Tesseract') {
     const ollamaList = await ollama.list();
     const modelNames = ollamaList.models.map(m => m.name);
@@ -188,7 +188,7 @@ ipcMain.handle('capture', async (event, rect) => {
 
   curr = randomUUID();
 
-  const data = await pullText(cropped.toDataURL().replace(/^data:image\/\w+;base64,/, ''), settings, path.join(userdata, 'screenshot.png'));
+  const data = await pullText(cropped.toDataURL().replace(/^data:image\/\w+;base64,/, ''), settings, path.join(userdata, 'screenshot.png'), ollama);
 
   await writeFile(path.join(userdata, 'screenshot.txt'), data, 'utf-8');
 
@@ -220,75 +220,66 @@ ipcMain.handle('get-shortcuts', async () => {
 
 const settings = JSON.parse(await readFile(path.join(userdata, 'settings.json'), 'utf-8').catch(() => '{}'));
 
+const ollama = settings.ollamaHost ? new _ollama({ host: settings.ollamaHost }) : __ollama;
+
+console.log('Initialized Ollama client with host:', ollama);
+
 console.log('Loaded settings:', settings);
 
 ipcMain.handle('query-ollama', async (e, prompt) => {
-  const win = e.sender
-  try{
-console.log('Querying Ollama...');
-if(settings.aiThink === 'false') settings.aiThink = false;
-if(settings.aiThink === 'true') settings.aiThink = true;
-const meta = await ollama.show({ model: settings.aiModel })
+  const win = e.sender;
+  let completeResponse = '';
 
-console.log('Ollama model metadata:', meta);
+  try {
+    console.log('Querying Ollama...');
 
-user = shortcuts[prompt] ? shortcuts[prompt] : prompt;
+    settings.aiThink = settings.aiThink === 'true';
 
-let config = {
-system: 'The following screenshot was taken from a user\'s desktop. Use the information in the screenshot to answer the user\'s query. If the screenshot contains text, prioritize that text in your response. If the screenshot contains an error message, use that information to help diagnose the issue. Always provide a helpful and informative response based on the content of the screenshot and the user\'s query. Text extracted from the screenshot:\n\n' + (await readFile(path.join(userdata, 'screenshot.txt'), 'utf-8')),
-model: settings.aiModel,
-prompt: user,
-stream: true,
-}
+    const meta = await ollama.show({ model: settings.aiModel });
 
-if(meta.capabilities.includes('thinking')){
- config.think = settings.aiThink;
-if(typeof config.think !== 'boolean' || typeof config.think != 'string') config.think = false;
-}
+    const user = shortcuts[prompt] || prompt;
+    const screenshotText = await readFile(path.join(userdata, 'screenshot.txt'), 'utf-8');
 
-let completeResponse = '';
+    let config = {
+      system:
+        'The following screenshot was taken from a user\'s desktop. Use the information in the screenshot to answer the user\'s query. If the screenshot contains text, prioritize that text in your response. If the screenshot contains an error message, use that information to help diagnose the issue. Always provide a helpful response based on the content of the screenshot and the user\'s query. Text extracted from the screenshot:\n\n' +
+        screenshotText,
+      model: settings.aiModel,
+      prompt: user,
+      stream: true,
+    };
 
-chat = await ollama.generate(config);
-for await (const chunk of chat) {
-  let type = 'message';
-  let message = chunk?.response;
+    if (meta.capabilities.includes('thinking')) {
+      config.think = settings.aiThink;
+      if (typeof config.think !== 'boolean') config.think = false;
+    }
 
-  if (message.length === 0) {
-    message = chunk?.thinking || '';
-    type = 'thinking';
+    const chat = await ollama.generate(config);
+
+try {
+  for await (const chunk of chat) {
+    if (!chunk) break;
+    let message = chunk.response || chunk.thinking || '';
+    if (!message) continue;
+
+    let type = chunk.response ? 'message' : 'thinking';
+    completeResponse += message;
+    win.send('ai-response', { message, type });
   }
-
-    if (message.length === 0) {
-    continue;
-  }
-
-    win.send('ai-response', {
-      message,
-      type
-    });
-  completeResponse += message;
+} catch (err) {
+  console.error('Chunk stream error:', err);
+} finally {
+  // Always call saveCapture, even if Ollama failed mid-stream
+  win.send('ai-response', { message: '', type: 'done' });
+  await saveCapture({ ocrText: screenshotText, response: completeResponse, id: curr });
 }
-win.send('ai-response', {
-  message: '',
-  type: 'done',
-});
-
-await saveCapture({
-  ocrText: await readFile(path.join(userdata, 'screenshot.txt'), 'utf-8'),
-  response: completeResponse,
-  id: curr
-});
-
-console.log('Ollama query complete.');
-  }catch(e){
-    console.error('Ollama query failed:', e);
-    dialog.showErrorBox('Ollama Error', `Failed to query Ollama: ${e.message}`);
-    win.send('ai-response', {
-      message: '',
-      type: 'done',
-    });
+  } catch (err) {
+    console.error('Ollama query failed:', err);
+    dialog.showErrorBox('Ollama Query Failed', 'An error occurred while communicating with the Ollama server. Please check your settings and ensure the server is running.');
+    win.send('ai-response', { message: 'Error: Failed to communicate with Ollama server.', type: 'message' });
   }
 });
+
 
 app.on('will-quit', () => {
   try{
@@ -354,7 +345,7 @@ const menu = Menu.buildFromTemplate([
     }
   },
   {
-    label: 'History',
+    label: 'Memory',
     click: () => {
       if (hasHistoryOpen) return;
       const historyWindow = new BrowserWindow({
@@ -376,6 +367,37 @@ const menu = Menu.buildFromTemplate([
       hasHistoryOpen = true;
       historyWindow.on('closed', () => {
         hasHistoryOpen = false;
+      });
+    }
+  },
+  {
+    label:"Add Existing Screenshot",
+    click: () => {
+      dialog.showOpenDialog({
+        title: 'Select a screenshot to add',
+        properties: ['openFile'],
+        filters: [
+          { name: 'Images', extensions: ['png', 'jpg', 'jpeg','pdf'] }
+        ]
+      }).then(async result => {
+        if (result.canceled || result.filePaths.length === 0) return;
+        const filePath = result.filePaths[0];
+const image = await readFile(filePath);
+const base64Image = image.toString('base64');
+const text = await pullText(base64Image, settings, filePath, ollama);
+        const id = randomUUID();
+                db.create(id, {
+          ocr: text,
+          timestamp: Date.now(),
+        });
+        await saveCapture({
+          ocrText: text,
+          response: '',
+          id
+        });
+      }).catch(err => {
+        console.error('Failed to add existing screenshot:', err);
+        dialog.showErrorBox('Error Adding Screenshot', 'An error occurred while adding the screenshot. Please try again.');
       });
     }
   },
@@ -438,7 +460,7 @@ ipcMain.handle('fetch-models', async () => {
     const matches = await semanticSearch(query, 5)
 
     const context = matches.map((m, i) =>
-      `${i + 1}. ${m.text}\nAI note: ${m.response}`
+      `${i + 1}. ${m.ocr}\nAI note: ${m.responses[0]}`
     ).join('\n\n')
 
     const prompt = `
@@ -452,6 +474,8 @@ ipcMain.handle('fetch-models', async () => {
 
   Answer using only the information above.
   `
+
+  console.log('Generated prompt for search query:', prompt);
 
     const response = await ollama.generate({
       model: JSON.parse(await readFile(path.join(app.getPath('userData'), 'settings.json'), 'utf-8')).aiModel,
@@ -529,5 +553,69 @@ ipcMain.handle('delete-history-entry', async (e, id) => {
   await db.delete(id);
 })
 
+ipcMain.handle('ask-query', async (e, fileId) => {
+  const record = db.get(fileId);
+  const query = await prompt({
+    title: 'Ask a question about this screenshot',
+    label: 'Your question:',
+    inputAttrs: {
+      type: 'text'
+    },
+    type: 'input'
+  });
+
+  if (!query) return;
+
+  const { ocr } = await record.read();
+
+  const aiPrompt = `You are answering a question using the following screenshot text and AI response as context:
+
+Screenshot text:
+${ocr}
+
+User question:
+${query}
+
+Answer the user's question using only the information above. If the screenshot text contains an error message, use that information to help diagnose the issue. Always provide a helpful response based on the content of the screenshot and the user’s question.
+  `
+
+  dialog.showMessageBox({
+    type: 'info',
+    buttons: ['OK'],
+    title: 'Generating Response',
+    message: 'Your question is being processed. This may take a moment.'
+  });
+
+  const response = await ollama.generate({
+    model: JSON.parse(await readFile(path.join(app.getPath('userData'), 'settings.json'), 'utf-8')).aiModel,
+    prompt: aiPrompt,
+    stream: false
+  })
+
+  const data = await record.read();
+  const responses = (data.responses || []).concat(response.response);
+  await record.kv('responses', responses);
+
+  return response.response;
+})
+
+let lastClipboardText = '';
+setInterval(async () => {
+ if(!settings.clipboardMonitoring || settings.clipboardMonitoring === 'disabled') return;
+  const text = clipboard.readText();
+  if (text && text !== lastClipboardText) {
+    lastClipboardText = text;
+    const id = randomUUID();
+    db.create(id, {
+      ocr: text,
+      timestamp: Date.now(),
+    });
+    await saveCapture({
+      ocrText: text,
+      response: '',
+      id
+    });
+  }
+}, 500);
 
 })
