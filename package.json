@@ -1,17 +1,14 @@
 {
-  "name": "ai",
+  "name": "lumen",
   "version": "1.0.0",
-  "description": "",
+  "description": "Illuminate your memory.",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "type": "commonjs",
   "devDependencies": {
-    "@electron/rebuild": "^4.0.3",
     "electron": "^40.4.1"
   },
   "dependencies": {
@@ -20,5 +17,49 @@
     "menubar.js": "^0.0.1",
     "ollama": "^0.6.3",
     "tesseract.js": "^7.0.0"
+  },
+   "build": {
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "productName": "Lumen",
+    "mac": {
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "category": "public.app-category.utilities",
+      "extendInfo": {
+        "LSArchitecturePriority": [
+          "arm64"
+        ]
+      },
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "linux": {
+      "category": "Utility",
+      "target": {
+        "target": "dir",
+        "arch": [
+          "x64"
+        ]
+      }
+    },
+    "win": {
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    }
   }
 }
