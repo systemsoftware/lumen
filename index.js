@@ -6,10 +6,10 @@ const { spawn, exec } = require('child_process');
 const menubar = require('menubar.js');
 const dubnium = require('dubnium');
 const path = require('path')
-const saveCapture = require('./embed');
 const { randomUUID } = require('crypto');
 const { semanticSearch } = require('./search');
 const prompt = require('electron-prompt');
+const getActiveContext = require('./context');
 
 function stripAnsi(str) {
   return str.replace(
@@ -17,7 +17,6 @@ function stripAnsi(str) {
     ''
   );
 }
-
 
 const db = new dubnium(path.join(app.getPath('userData'), 'db'));
 
@@ -146,6 +145,7 @@ ipcMain.handle('capture', async (event, rect) => {
   ready = false;
   console.log('Received capture request with rect:', rect);
   overlayWindow.hide();
+  const context = await getActiveContext();
   const sources = await desktopCapturer.getSources({
     types: ['screen'],
     thumbnailSize: screen.getPrimaryDisplay().size
@@ -197,9 +197,25 @@ ipcMain.handle('capture', async (event, rect) => {
 
   console.log('Extracted text from screenshot:', data);
 
+const promptWithContext = `
+Text:
+${data}
+
+Context:
+App: ${context.appName}
+Window: ${context.windowTitle}
+`;
+
   db.create(curr, {
     ocr: data,
+    embedding:(
+      await ollama.embeddings({
+        model: 'nomic-embed-text',
+        prompt: promptWithContext
+      })
+    ).embedding,
     timestamp: Date.now(),
+    context: await getActiveContext(),
   })
 
   if(parseInt(settings.historyLimit)) {
@@ -269,9 +285,10 @@ try {
 } catch (err) {
   console.error('Chunk stream error:', err);
 } finally {
-  // Always call saveCapture, even if Ollama failed mid-stream
   win.send('ai-response', { message: '', type: 'done' });
-  await saveCapture({ ocrText: screenshotText, response: completeResponse, id: curr });
+  const r = db.get(curr);
+  const data = await r.read();
+  r.kv('responses', (data.responses || []).concat(completeResponse));
 }
   } catch (err) {
     console.error('Ollama query failed:', err);
@@ -314,6 +331,8 @@ const tray = await menubar({
     },
 }, './icon.png', 'detach')
 tray.window.loadFile('search.html');
+
+tray.window.webContents.openDevTools();
 
 tray.tray.on('click', () => {
 if(!settings.aiModel) tray.window.hide()
@@ -390,10 +409,17 @@ const text = await pullText(base64Image, settings, filePath, ollama);
           ocr: text,
           timestamp: Date.now(),
         });
-        await saveCapture({
-          ocrText: text,
-          response: '',
-          id
+        const r = db.get(id)
+        r.kv('ocr', text);
+        r.kv('embedding', await ollama.embeddings({
+          model: 'nomic-embed-text',
+          prompt: text
+        }).embedding);
+        dialog.showMessageBox({
+          type: 'info',
+          buttons: ['OK'],
+          title: 'Screenshot Added',
+          message: 'The screenshot was successfully added to your history.'
         });
       }).catch(err => {
         console.error('Failed to add existing screenshot:', err);
@@ -460,7 +486,7 @@ ipcMain.handle('fetch-models', async () => {
     const matches = await semanticSearch(query, 5)
 
     const context = matches.map((m, i) =>
-      `${i + 1}. ${m.ocr}\nAI note: ${m.responses[0]}`
+      `${i + 1}. ${m.ocr}\n${ m.responses ? `AI note: ${m.responses[m.responses.length - 1]}` : 'No AI response for this capture.'} Taken on ${new Date(m.timestamp).toLocaleString()} in ${m.context.appName} - ${m.context.windowTitle}`
     ).join('\n\n')
 
     const prompt = `
@@ -492,10 +518,7 @@ ipcMain.handle('fetch-models', async () => {
       }
     }
 
-    tray.window.webContents.send('search-response-done', {
-      response: completeResponse,
-      matches
-    });
+    tray.window.webContents.send('search-response', { type: 'done' });
   });
 
 ipcMain.handle('set-setting', async (e, key, value) => {
@@ -609,13 +632,47 @@ setInterval(async () => {
     db.create(id, {
       ocr: text,
       timestamp: Date.now(),
-    });
-    await saveCapture({
-      ocrText: text,
-      response: '',
-      id
+      embedding:(
+        await ollama.embeddings({
+          model: 'nomic-embed-text',
+          prompt: text
+        })
+      ).embedding,
+      responses: []
     });
   }
 }, 500);
+
+ipcMain.handle('follow-up', async (e, chat) => {
+  const win = BrowserWindow.getFocusedWindow();
+  if (!win) return;
+
+  const _prompt = await prompt({
+    title: 'Ask a follow-up question',
+    label: 'Your question:',
+    inputAttrs: { type: 'text' },
+    type: 'input'
+  });
+
+  if (!_prompt) return;
+
+  const updatedChat = [...chat, { role: 'user', content: _prompt }];
+
+  const response = await ollama.chat({
+    model: settings.aiModel,
+    messages: updatedChat,
+    stream: true 
+  });
+
+  for await (const chunk of response) {
+    const message = chunk?.message?.content || ''; 
+    if (message.length > 0) {
+      win.webContents.send('search-response', { message, type: 'message' });
+    }
+  }
+
+  win.webContents.send('search-response', { message: '', type: 'done' });
+  return _prompt;
+});
 
 })

@@ -14,12 +14,21 @@
 </div>
 <br><br>
 <div id="response" style="display: none;"></div>
+<br><br>
+<div style="border: none; background: none;" id="followups"></div>
+<button id="follow-up" style="display: none; width: 96%; margin: auto;" onclick="followUp()">Ask a follow-up question</button>
 
 <script>
 
+let chat = []
+
+let responseBox = document.getElementById('response');
+
 
 document.getElementById('send').addEventListener('click', () => {
+    if(chat.length) return location.reload();
     const prompt = document.getElementById('custom').value;
+    chat.push({ role: 'user', content: prompt });
     window.electronAPI.search(prompt);
       document.getElementById('response').style.display = 'block';
       document.getElementById('response').innerHTML = 'Searching...';
@@ -29,29 +38,40 @@ let aiResponseBuffer = '';
 let lastMessageType = null;
 
 window.electronAPI.onSearchResults((message) => {
-  document.getElementById('response').innerHTML = ''
-const responseBox = document.getElementById('response');
-  if(message.type == 'done') {
-    document.getElementById('new-question').style.display = 'block';
+  // Use 'responseBox' which now points to the latest box created
+  if (!responseBox) return; 
+
+  if (message.type === 'done') {
+    chat.push({ role: 'assistant', content: aiResponseBuffer });
+    document.getElementById('follow-up').style.display = 'block';
+    responseBox.innerHTML = marked.parse(aiResponseBuffer);
     return;
   }
-  if (responseBox.innerHTML === 'Loading...' && message.type === 'message') {
-    responseBox.innerHTML = '';
-    aiResponseBuffer = '';
-    lastMessageType = null;
-  }
 
-  console.log('Received AI response chunk:', message);
-
-  if (message.type !== lastMessageType) {
-    aiResponseBuffer = '';
-    lastMessageType = message.type;
-  }
-
-  aiResponseBuffer += message;
-
+  // Handle the object structure used by follow-up
+  const textChunk = typeof message === 'object' ? message.message : message;
+  aiResponseBuffer += textChunk;
+  
   responseBox.innerHTML = marked.parse(aiResponseBuffer);
 });
 
+const followUp = async () => {
+  aiResponseBuffer = ''; 
+  
+  const newBox = document.createElement('div');
+  newBox.id = 'response-' + Math.random().toString(36).substring(2, 15);
+  newBox.style.marginTop = '10px';
+  newBox.style.padding = '10px';
+  newBox.innerHTML = 'Loading...';
+  
+  document.getElementById('followups').appendChild(newBox);
+  
+  responseBox = newBox; 
+
+  const userPrompt = await window.electronAPI.followUp(chat); 
+  if (!userPrompt) return;
+
+  chat.push({ role: 'user', content: userPrompt });
+}
 
 </script>

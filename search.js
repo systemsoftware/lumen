@@ -15,7 +15,7 @@ async function semanticSearch(query, limit = 5) {
   const files = (await readdir(dir)).filter(f => f.endsWith('.json'));
   const records = await Promise.all(files.map(async f => {
     const data = JSON.parse(await readFile(path.join(dir, f), 'utf-8'));
-    const score = cosineSimilarity(queryEmbedding.embedding, data.embedding);
+    const score = cosineSimilarity(queryEmbedding.embedding, data.embedding || []);
     return { ...data, score };
   }));
 
