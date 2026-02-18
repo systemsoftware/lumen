@@ -332,8 +332,6 @@ const tray = await menubar({
 }, './icon.png', 'detach')
 tray.window.loadFile('search.html');
 
-tray.window.webContents.openDevTools();
-
 tray.tray.on('click', () => {
 if(!settings.aiModel) tray.window.hide()
 })
