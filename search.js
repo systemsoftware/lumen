@@ -1,8 +1,12 @@
-const ollama = require('ollama').default
 const { readFile, readdir } = require('fs/promises')
 const cosineSimilarity  = require('./similarity.js')
 const { app } = require('electron')
 const path = require('path')
+const { readFileSync } = require('fs')
+
+const settings = JSON.parse(readFileSync(path.join(app.getPath('userData'), 'settings.json'), 'utf-8'))
+
+const ollama = settings.ollamaHost ? new (require('ollama').Ollama)({ host: settings.ollamaHost }) : new (require('@ollama/client').Ollama)();
 
 const dir = path.join(app.getPath('userData'), 'db')
 

@@ -108,18 +108,24 @@ exec('ollama list', { env, shell: true }, (error, stdout) => {
 });
 
 app.on('ready', async () => {
-console.log('Ollama AI integration enabled in settings; checking for ollama command...');
+
+ const settings = JSON.parse(await readFile(path.join(userdata, 'settings.json'), 'utf-8').catch(() => '{}'));
+
 cmdExists('ollama').then(exists => {
 if(exists) {
+if(settings.ollamaHost) {
+  console.log('Ollama host specified in settings; skipping local Ollama server start.');
+  return;
+}
 console.log('Ollama command found; starting Ollama server...');
 const op = spawn('ollama', ['serve'], { env });
 console.log('Ollama server started with PID:', op.pid);
 ollamaPid = op.pid;
 }else{
-  console.log('Ollama command not found; skipping Ollama server start.');
+  dialog.showErrorBox('Ollama Not Found', 'The "ollama" command was not found. Please ensure Ollama is installed and the command is available in your PATH.');
+  app.quit();
 }
 })
-
 
 const overlayWindow = new BrowserWindow({
   width: screen.getPrimaryDisplay().size.width,
@@ -233,8 +239,6 @@ Window: ${context.windowTitle}
 ipcMain.handle('get-shortcuts', async () => {
   return shortcuts;
 })
-
-const settings = JSON.parse(await readFile(path.join(userdata, 'settings.json'), 'utf-8').catch(() => '{}'));
 
 const ollama = settings.ollamaHost ? new _ollama({ host: settings.ollamaHost }) : __ollama;
 
@@ -454,7 +458,6 @@ if(result.response === 0) {
       },
     });
     settingsWindow.loadFile('settings.html');
-    settingsWindow.webContents.openDevTools();
   }else {
    app.quit();
   }
@@ -481,6 +484,7 @@ ipcMain.handle('fetch-models', async () => {
 })
 
   ipcMain.handle('search', async (event, query) => {
+    try{
     const matches = await semanticSearch(query, 5)
 
     const context = matches.map((m, i) =>
@@ -517,6 +521,11 @@ ipcMain.handle('fetch-models', async () => {
     }
 
     tray.window.webContents.send('search-response', { type: 'done' });
+  } catch (err) {
+    console.error('Search query failed:', err);
+    dialog.showErrorBox('Search Failed', err.message || 'An error occurred while performing the search. Please try again.');
+    tray.window.webContents.send('search-response', { message: 'Error: Failed to perform search.', type: 'message' });
+  }
   });
 
 ipcMain.handle('set-setting', async (e, key, value) => {
