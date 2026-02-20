@@ -6,7 +6,7 @@ const { readFileSync } = require('fs')
 
 const settings = JSON.parse(readFileSync(path.join(app.getPath('userData'), 'settings.json'), 'utf-8'))
 
-const ollama = settings.ollamaHost ? new (require('ollama').Ollama)({ host: settings.ollamaHost }) : new (require('@ollama/client').Ollama)();
+const ollama = settings.ollamaHost ? new (require('ollama').Ollama)({ host: settings.ollamaHost }) : require('ollama').default;
 
 const dir = path.join(app.getPath('userData'), 'db')
 
