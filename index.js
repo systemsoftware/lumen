@@ -242,13 +242,6 @@ ipcMain.handle('get-shortcuts', async () => {
 
 const ollama = settings.ollamaHost ? new _ollama({ host: settings.ollamaHost }) : __ollama;
 
-try{
-await ollama.list()
-}catch(err){
-  console.error('Failed to connect to Ollama server:', err);
-  dialog.showErrorBox('Ollama Connection Failed', 'Failed to connect to the Ollama server. Please check your settings and ensure the server is running.');
-}
-
 console.log('Initialized Ollama client with host:', ollama);
 
 console.log('Loaded settings:', settings);
