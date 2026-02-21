@@ -10,6 +10,17 @@ const { randomUUID } = require('crypto');
 const { semanticSearch } = require('./search');
 const prompt = require('electron-prompt');
 const getActiveContext = require('./context');
+const liquidGlass = require('electron-liquid-glass');
+
+const addLiquidGlass = (win, variant=1) => {
+  if (typeof liquidGlass.addView !== 'function' || !liquidGlass.isGlassSupported()) return;
+    win.setBackgroundColor('#00000000');
+    win.setVibrancy(false);
+    win.setWindowButtonVisibility(true);
+    const id = liquidGlass.addView(win.getNativeWindowHandle());
+    liquidGlass.unstable_setVariant(id, variant);
+    console.log('Added window to Liquid Glass with ID:', id);
+}
 
 function stripAnsi(str) {
   return str.replace(
@@ -180,6 +191,8 @@ ipcMain.handle('capture', async (event, rect) => {
     },
   });
 
+  addLiquidGlass(aiWindow, settings.liquidVariant || 1);
+
   aiWindow.webContents.on('did-finish-load', () => {
     aiWindow.webContents.send('capture-result', cropped.toDataURL());
   });
@@ -335,6 +348,7 @@ const tray = await menubar({
     },
 }, './icon.png', 'detach')
 tray.window.loadFile('search.html');
+addLiquidGlass(tray.window, settings.liquidVariant || 1);
 
 tray.tray.on('click', () => {
 if(!settings.aiModel) tray.window.hide()
@@ -350,14 +364,17 @@ const menu = Menu.buildFromTemplate([
     click: () => {
       if (hasSettingsOpen) return;
       const settingsWindow = new BrowserWindow({
-        width: 600,
-        height: 800,
-        resizable: false,
+        width: screen.getPrimaryDisplay().size.width * 0.8,
+        height: screen.getPrimaryDisplay().size.height * 0.8,
+        frame: false,
+        transparent:true,
         webPreferences: {
           contextIsolation: true,
           preload: path.join(__dirname, 'preload.js')
         },
       });
+      settingsWindow.setWindowButtonVisibility(true);
+      addLiquidGlass(settingsWindow, settings.liquidVariant || 1);
       settingsWindow.loadFile('settings.html');
       hasSettingsOpen = true;
       settingsWindow.on('closed', () => {
@@ -384,6 +401,7 @@ const menu = Menu.buildFromTemplate([
           preload: path.join(__dirname, 'preload.js')
         },
       });
+      addLiquidGlass(historyWindow, settings.liquidVariant || 1);
       historyWindow.loadFile('history.html');
       hasHistoryOpen = true;
       historyWindow.on('closed', () => {
@@ -449,14 +467,15 @@ tray.window.webContents.on('did-finish-load', async () => {
     }).then(result => {
 if(result.response === 0) {
     const settingsWindow = new BrowserWindow({
-      width: 600,
-      height: 800,
-      resizable: false,
+      width: screen.getPrimaryDisplay().size.width * 0.8,
+      height: screen.getPrimaryDisplay().size.height * 0.8,
+      frame: false,
       webPreferences: {
         contextIsolation: true,
         preload: path.join(__dirname, 'preload.js')
       },
     });
+    addLiquidGlass(settingsWindow, settings.liquidVariant || 1);
     settingsWindow.loadFile('settings.html');
   }else {
    app.quit();

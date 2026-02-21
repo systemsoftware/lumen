@@ -36,7 +36,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         {
             id:"pull",
             label: 'Pull Model',
-            description: 'Pull a model from Ollama. Enter the model name and click pull. The model will be downloaded and available for use. Right click the log area to clear logs.',
+            description: 'Pull a model from Ollama. Enter the model name and click pull. The model will be downloaded and available for use. Right click the log area to clear logs. <a target="_blank" href="https://ollama.com/search" target="_blank">Find a model on Ollama</a>.',
             type: 'text',
             placeholder: 'e.g. gpt-oss',
              value: '',
@@ -113,6 +113,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             type: 'select',
              options: ['disabled', 'enabled'],
              value: (await window.electronAPI.fetchSetting('clipboardMonitoring'))
+        },
+        {
+            id:"liquidVariant",
+            label: 'Liquid Glass Variant (Requires Restart)',
+            description: 'Choose the visual style of the app. This is an experimental feature and will only work on macOS 26+',
+            type: 'select',
+             options: ['0', '1', '2', '3'],
+             value: await window.electronAPI.fetchSetting('liquidVariant') || '1',
         }
     ];
 
